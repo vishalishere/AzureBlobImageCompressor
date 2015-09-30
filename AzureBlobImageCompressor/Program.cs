@@ -4,6 +4,7 @@
     using System.Configuration;
     using System.Diagnostics;
     using System.IO;
+    using System.Threading;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Blob;
 
@@ -23,7 +24,7 @@
 
             foreach (var listBlobItem in container.ListBlobs())
             {
-                var blob = container.GetBlockBlobReference(((CloudBlockBlob) listBlobItem).Name);
+                var blob = container.GetBlockBlobReference(((CloudBlockBlob)listBlobItem).Name);
                 blob.FetchAttributes();
                 if (blob.Metadata.ContainsKey("optimized") && blob.Metadata["optimized"] == "true")
                 {
@@ -34,7 +35,14 @@
 
                 if (File.Exists(path))
                 {
-                    File.Delete(path);
+                    try
+                    {
+                        File.Delete(path);
+                    }
+                    catch (Exception)
+                    {
+                        Console.WriteLine("File not deleted. " + path);
+                    }
                 }
 
                 blob.DownloadToFile(path, FileMode.CreateNew);
@@ -42,7 +50,7 @@
                 if (path.EndsWith(".png"))
                 {
                     Console.WriteLine("Processing file: " + path);
-                    Process.Start(Path.Combine(dir, "optipng.exe"), path);
+                    Process.Start(Path.Combine(dir, "pngquant.exe"), blob.Name + " -f --ext .png");
                     blob.Metadata["optimized"] = "true";
                     Console.WriteLine("File optimized");
                     Console.WriteLine();
@@ -50,7 +58,7 @@
                 else if (path.EndsWith(".jpg") || path.EndsWith(".jpeg"))
                 {
                     Console.WriteLine("Processing file: " + path);
-                    Process.Start(Path.Combine(dir, "jpegtran.exe"), "-optimize -verbose" + path + " " + path);
+                    Process.Start(Path.Combine(dir, "jpegtran.exe"), " -optimize -verbose " + blob.Name + " " + blob.Name);
                     blob.Metadata["optimized"] = "true";
                     Console.WriteLine("File optimized");
                     Console.WriteLine();
@@ -62,10 +70,28 @@
 
                 if (blob.Metadata["optimized"] == "true")
                 {
-                    blob.UploadFromFile(path, FileMode.Open);
+                    try
+                    {
+                        blob.UploadFromFile(path, FileMode.Open);
+                    }
+                    catch (Exception)
+                    {
+                        Thread.Sleep(10000);
+                        blob.UploadFromFile(path, FileMode.Open);
+                    }
                 }
 
-                File.Delete(path);
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        File.Delete(path);
+                    }
+                    catch (Exception)
+                    {
+                        Console.WriteLine("File not deleted. " + path);
+                    }
+                }
             }
         }
     }
